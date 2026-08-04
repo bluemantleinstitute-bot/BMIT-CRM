@@ -1,0 +1,912 @@
+================================================================================
+                    SECURITY AUDIT REPORT — WACRM (WhatsApp CRM)
+================================================================================
+
+Audit Date    : July 25, 2026
+Auditor       : Cybersecurity Analysis (Automated)
+Scope         : Full codebase static analysis
+              : src/, mcp-server/, supabase/, config files
+Methodology   : OWASP Top 10, CWE/SANS 25, secrets scanning,
+              : auth/authz review, dependency audit
+Project       : WACRM v0.8.0
+Stack         : Next.js 16.2.6, React 19, Supabase, TypeScript
+
+================================================================================
+                           EXECUTIVE SUMMARY
+================================================================================
+
+  SEVERITY        COUNT
+  ─────────────   ─────
+  CRITICAL        2
+  HIGH            4
+  MEDIUM          8
+  LOW             11
+  INFORMATIONAL   7
+  ─────────────   ─────
+  TOTAL           32
+
+Overall Assessment: The WACRM codebase demonstrates strong security
+engineering for a self-hosted CRM. Encryption at rest (AES-256-GCM),
+Supabase RLS for multi-tenant isolation, webhook HMAC verification,
+SSRF protection, and comprehensive RBAC are well-implemented. However,
+two critical and four high-severity issues require immediate
+remediation — most notably the complete absence of CSRF protection
+and exposed production secrets.
+
+
+================================================================================
+                         CRITICAL SEVERITY (2)
+================================================================================
+
+--------------------------------------------------------------------------------
+C-1: No CSRF Protection on Any State-Changing Endpoint
+--------------------------------------------------------------------------------
+CWE         : CWE-352 — Cross-Site Request Forgery
+CVSS        : 8.8 (High)
+Status      : OPEN
+Effort      : 2-3 days
+
+Description:
+  The application authenticates via Supabase SSR cookies. Browsers
+  automatically attach cookies to same-origin requests. A malicious
+  page can trigger state-changing requests from any authenticated
+  user. There are ZERO CSRF tokens, ZERO SameSite enforcement, and
+  ZERO Origin/Referer validation anywhere in the codebase.
+
+  No search results for "csrf", "CSRF", "XSRF", or "xsrf" in src/.
+
+Affected Routes (48 total — ALL state-changing endpoints):
+
+  POST Routes:
+  ──────────────────────────────────────────────────────────────────────────────
+  File                                                  Line
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/account/transfer-ownership/route.ts       55
+  src/app/api/flows/route.ts                            48
+  src/app/api/flows/[id]/activate/route.ts              21
+  src/app/api/account/invitations/route.ts              167
+  src/app/api/account/api-keys/route.ts                 71
+  src/app/api/whatsapp/config/route.ts                  166
+  src/app/api/whatsapp/send/route.ts                    23
+  src/app/api/whatsapp/react/route.ts                   21
+  src/app/api/whatsapp/broadcast/route.ts               61
+  src/app/api/whatsapp/templates/submit/route.ts        89
+  src/app/api/whatsapp/templates/sync/route.ts          125
+  src/app/api/automations/route.ts                      27
+  src/app/api/automations/[id]/duplicate/route.ts       6
+  src/app/api/automations/engine/route.ts               11
+  src/app/api/ai/config/route.ts                        70
+  src/app/api/ai/draft/route.ts                         23
+  src/app/api/ai/playground/route.ts                    24
+  src/app/api/ai/test/route.ts                          17
+  src/app/api/ai/autoreply/[conversationId]/route.ts    27
+  src/app/api/ai/knowledge/route.ts                     44
+  src/app/api/ai/knowledge/reindex/route.ts             16
+  src/app/api/quick-replies/route.ts                    26
+  src/app/api/v1/contacts/route.ts                      96
+  src/app/api/v1/broadcasts/route.ts                    46
+  src/app/api/v1/messages/route.ts                      44
+  src/app/api/v1/webhooks/route.ts                      49
+  src/app/api/invitations/[token]/redeem/route.ts       56
+
+  PUT Routes:
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/flows/[id]/route.ts                       90
+
+  PATCH Routes:
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/account/route.ts                          41
+  src/app/api/account/members/[userId]/route.ts         45
+  src/app/api/whatsapp/templates/[id]/route.ts          47
+  src/app/api/quick-replies/[id]/route.ts               11
+  src/app/api/automations/[id]/route.ts                 46
+  src/app/api/ai/knowledge/[id]/route.ts                42
+  src/app/api/v1/contacts/[id]/route.ts                 35
+  src/app/api/v1/webhooks/[id]/route.ts                 46
+
+  DELETE Routes:
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/flows/[id]/route.ts                       186
+  src/app/api/automations/[id]/route.ts                 134
+  src/app/api/whatsapp/config/route.ts                  441
+  src/app/api/whatsapp/templates/[id]/route.ts          233
+  src/app/api/quick-replies/[id]/route.ts               84
+  src/app/api/v1/webhooks/[id]/route.ts                 120
+  src/app/api/account/members/[userId]/route.ts         97
+  src/app/api/ai/knowledge/[id]/route.ts                115
+  src/app/api/account/invitations/[id]/route.ts         25
+  src/app/api/ai/config/route.ts                        258
+  src/app/api/account/api-keys/[id]/route.ts            24
+
+Attack Scenarios:
+  1. Malicious page performs hidden POST to /api/account/transfer-ownership
+     to transfer account ownership away from the victim.
+  2. Attacker revokes all API keys via DELETE /api/account/api-keys/[id].
+  3. Attacker changes WhatsApp config via POST /api/whatsapp/config.
+  4. Attacker sends messages or broadcasts on behalf of the victim.
+  5. Attacker invites new members or escalates their own role.
+
+Recommendation:
+  1. Implement CSRF tokens (e.g., csrf-csrf library or double-submit
+     cookie pattern).
+  2. Add SameSite=Strict or SameSite=Lax to all auth cookies.
+  3. Validate Origin/Referer headers as defense-in-depth.
+
+--------------------------------------------------------------------------------
+C-2: Production Secrets Exposed in .env.local
+--------------------------------------------------------------------------------
+CWE         : CWE-798 — Use of Hard-coded Credentials
+CVSS        : 9.1 (Critical)
+Status      : OPEN
+Effort      : 1 day
+
+Description:
+  The .env.local file contains live production secrets:
+
+  Line 6  : NEXT_PUBLIC_SUPABASE_URL
+            = https://yjhwidlvjfqmhpkyzbrh.supabase.co
+  Line 7  : NEXT_PUBLIC_SUPABASE_ANON_KEY
+            = eyJhbGciOiJIUzI1NiIs... (full JWT)
+  Line 18 : SUPABASE_SERVICE_ROLE_KEY
+            = eyJhbGciOiJIUzI1NiIs... (full service-role JWT — bypasses ALL RLS)
+  Line 25 : ENCRYPTION_KEY
+            = 1dd14e58b8987480eed37dbd4cb9059e5318e10f7414f34bf89d9a318e28b4c3
+  Line 30 : META_APP_SECRET
+            = 25dc13ebcf64b9cac1703ba12178c4e5
+
+  The .gitignore correctly excludes .env* (line 34), but if this file
+  was ever committed (e.g., git add -f .env.local), all secrets are
+  permanently compromised in git history.
+
+Impact:
+  The service-role key alone grants unrestricted read/write to ALL
+  database tables, bypassing ALL RLS policies. An attacker with this
+  key can read every contact, conversation, message, and configuration
+  in the entire database.
+
+Recommendation:
+  1. Verify this file was NEVER committed:
+     git log --all --full-history -- .env.local
+  2. If committed, rotate ALL secrets immediately and purge git history.
+  3. Add .env.local to a pre-commit hook blocklist.
+  4. Use a secrets manager (Vault, Doppler, Supabase Vault) for
+     production deployments.
+
+
+================================================================================
+                          HIGH SEVERITY (4)
+================================================================================
+
+--------------------------------------------------------------------------------
+H-1: Middleware Only Protects /api/whatsapp/* — All Other API Routes Exposed
+--------------------------------------------------------------------------------
+CWE         : CWE-862 — Missing Authorization
+CVSS        : 7.5
+Status      : OPEN
+Effort      : 1 day
+
+Description:
+  The Next.js middleware (src/middleware.ts:80-86) only enforces auth
+  on /api/whatsapp/* (excluding /webhook). All other API routes rely
+  entirely on internal auth checks within each route handler.
+
+  Middleware auth check (line 80-86):
+    if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
+        !request.nextUrl.pathname.includes('/webhook')) {
+      return withRefreshedCookies(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      )
+    }
+
+  This means /api/account/*, /api/ai/*, /api/automations/*,
+  /api/flows/*, /api/v1/*, /api/invitations/*, /api/quick-replies/*
+  are NOT protected by the middleware.
+
+Risk:
+  Any new route that forgets to call getCurrentAccount(), requireRole(),
+  or requireApiKey() is COMPLETELY unprotected — no defense-in-depth.
+
+Affected Routes (45+):
+  src/app/api/account/route.ts
+  src/app/api/account/members/route.ts
+  src/app/api/account/members/[userId]/route.ts
+  src/app/api/account/invitations/route.ts
+  src/app/api/account/invitations/[id]/route.ts
+  src/app/api/account/api-keys/route.ts
+  src/app/api/account/api-keys/[id]/route.ts
+  src/app/api/account/transfer-ownership/route.ts
+  src/app/api/ai/config/route.ts
+  src/app/api/ai/draft/route.ts
+  src/app/api/ai/playground/route.ts
+  src/app/api/ai/test/route.ts
+  src/app/api/ai/usage/route.ts
+  src/app/api/ai/autoreply/[conversationId]/route.ts
+  src/app/api/ai/knowledge/route.ts
+  src/app/api/ai/knowledge/[id]/route.ts
+  src/app/api/ai/knowledge/reindex/route.ts
+  src/app/api/automations/route.ts
+  src/app/api/automations/[id]/route.ts
+  src/app/api/automations/[id]/duplicate/route.ts
+  src/app/api/automations/cron/route.ts
+  src/app/api/automations/engine/route.ts
+  src/app/api/flows/route.ts
+  src/app/api/flows/[id]/route.ts
+  src/app/api/flows/[id]/activate/route.ts
+  src/app/api/flows/[id]/runs/route.ts
+  src/app/api/flows/cron/route.ts
+  src/app/api/flows/templates/route.ts
+  src/app/api/quick-replies/route.ts
+  src/app/api/quick-replies/[id]/route.ts
+  src/app/api/invitations/[token]/peek/route.ts
+  src/app/api/invitations/[token]/redeem/route.ts
+  src/app/api/v1/me/route.ts
+  src/app/api/v1/messages/route.ts
+  src/app/api/v1/contacts/route.ts
+  src/app/api/v1/contacts/[id]/route.ts
+  src/app/api/v1/conversations/route.ts
+  src/app/api/v1/conversations/[id]/route.ts
+  src/app/api/v1/conversations/[id]/messages/route.ts
+  src/app/api/v1/broadcasts/route.ts
+  src/app/api/v1/broadcasts/[id]/route.ts
+  src/app/api/v1/webhooks/route.ts
+  src/app/api/v1/webhooks/[id]/route.ts
+
+Recommendation:
+  Expand middleware to protect all /api/* routes by default, with
+  explicit exemptions for public endpoints (webhook, invitation peek).
+
+--------------------------------------------------------------------------------
+H-2: Database Error Messages Leaked to Clients
+--------------------------------------------------------------------------------
+CWE         : CWE-209 — Generation of Error Message Containing Sensitive Info
+CVSS        : 6.5
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  Multiple API routes return raw error.message from database operations
+  in 500 responses. This leaks internal schema details, SQL error text,
+  and database structure information to attackers.
+
+Affected Files:
+  ──────────────────────────────────────────────────────────────────────────────
+  File                                                  Line(s)     Leaked
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/flows/route.ts                            43          error.message
+  src/app/api/flows/[id]/route.ts                       143,154,    error.message
+                                                        168,210
+  src/app/api/flows/[id]/activate/route.ts              116         error.message
+  src/app/api/flows/[id]/runs/route.ts                  56          error.message
+  src/app/api/flows/cron/route.ts                       63          error.message
+  src/app/api/quick-replies/route.ts                    19, 77      error.message
+  src/app/api/quick-replies/[id]/route.ts               80, 101     error.message
+  src/app/api/automations/route.ts                      23, 124,    error.message
+                                                        131         raw error obj
+  src/app/api/automations/[id]/route.ts                 39, 123,    error.message
+                                                        128, 156
+  src/app/api/automations/[id]/duplicate/route.ts       34, 53, 82  error.message
+  src/app/api/automations/cron/route.ts                 36          error.message
+
+Good Practice Example (src/lib/auth/account.ts:69-74):
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+
+Recommendation:
+  Replace all error.message in 500 responses with generic messages.
+  Log the actual error server-side only.
+
+--------------------------------------------------------------------------------
+H-3: CSP is Report-Only (No Enforcement)
+--------------------------------------------------------------------------------
+CWE         : CWE-693 — Protection Mechanism Failure
+CVSS        : 6.1
+Status      : OPEN
+Effort      : 1 day
+
+Description:
+  File: next.config.ts, line 39
+  key: "Content-Security-Policy-Report-Only"
+
+  The Content-Security-Policy is set as Report-Only. Violations are
+  logged but NOT blocked. Even if an XSS payload executes, CSP will
+  not prevent it.
+
+  Additionally, the CSP includes 'unsafe-inline' and 'unsafe-eval' in
+  script-src (line 45), which significantly weakens any future
+  enforcement.
+
+  CSP Directives:
+    default-src 'self'
+    script-src 'self' 'unsafe-inline' 'unsafe-eval'     <-- WEAK
+    style-src 'self' 'unsafe-inline'
+    img-src 'self' data: blob: https:
+    media-src 'self' blob: https://*.supabase.co
+    font-src 'self' data:
+    connect-src 'self' https://*.supabase.co wss://*.supabase.co
+    frame-ancestors 'none'
+    base-uri 'self'
+    form-action 'self'
+
+Recommendation:
+  1. After validation period, flip to Content-Security-Policy.
+  2. Migrate to nonce-based CSP to eliminate unsafe-inline.
+  3. Remove unsafe-eval (no application code uses eval()).
+
+--------------------------------------------------------------------------------
+H-4: Next.js High-Severity Vulnerabilities (16 Dependencies)
+--------------------------------------------------------------------------------
+CWE         : CWE-1395 — Dependency on Vulnerable Third-Party Component
+CVSS        : 7.5 (combined)
+Status      : OPEN
+Effort      : 1 day
+
+Description:
+  npm audit reports 16 vulnerabilities (3 moderate, 13 high):
+
+  Package              Severity   Advisory/Description
+  ──────────────────────────────────────────────────────────────────────────────
+  next                 HIGH       GHSA-6gpp-xcg3-4w24
+                                  Middleware/proxy bypass via Turbopack
+  next                 HIGH       GHSA-m99w-x7hq-7vfj
+                                  DoS via Server Actions
+  next                 HIGH       GHSA-89xv-2m56-2m9x
+                                  SSRF in Server Actions
+  next                 HIGH       GHSA-68g3-v927-f742
+                                  Cache confusion with request bodies
+  next                 HIGH       GHSA-4633-3j49-mh5q
+                                  Cache confusion with invalid UTF-8
+  next                 HIGH       GHSA-4c39-4ccg-62r3
+                                  Unbounded Server Action payload
+  next                 HIGH       GHSA-p9j2-gv94-2wf4
+                                  SSRF in rewrites
+  next                 HIGH       GHSA-q8wf-6r8g-63ch
+                                  DoS via SVG image optimization
+  next                 HIGH       GHSA-955p-x3mx-jcvp
+                                  Unauthenticated endpoint disclosure
+  sharp                HIGH       GHSA-f88m-g3jw-g9cj
+                                  libvips CVEs (CVE-2026-33327+)
+  postcss              HIGH       GHSA-r28c-9q8g-f849
+                                  Path traversal via source maps
+  brace-expansion      HIGH       GHSA-mh99-v99m-4gvg
+                                  DoS via unbounded expansion
+  @hono/node-server    MODERATE   GHSA-frvp-7c67-39w9
+                                  Path traversal on Windows
+
+  Current versions:
+    next: 16.2.6        (fix: 16.2.11+)
+    sharp: <0.35.0      (fix: 0.35.0+)
+    postcss: <=8.5.17   (fix: 8.5.18+)
+    brace-expansion: <=5.0.7
+    @hono/node-server: <2.0.5
+
+Recommendation:
+  Run: npm audit fix --force
+  Note: This requires breaking changes testing.
+
+
+================================================================================
+                          MEDIUM SEVERITY (8)
+================================================================================
+
+--------------------------------------------------------------------------------
+M-1: javascript: Protocol Injection via Unvalidated URLs
+--------------------------------------------------------------------------------
+CWE         : CWE-79 — Cross-site Scripting
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  User-influenced URLs rendered in href/src attributes without scheme
+  validation. If media_url or avatar_url contains javascript:alert(1),
+  clicking the link executes arbitrary JS.
+
+Affected Locations:
+  ──────────────────────────────────────────────────────────────────────────────
+  File                                                  Line   Attribute
+  ──────────────────────────────────────────────────────────────────────────────
+  src/components/inbox/message-bubble.tsx               184    <a href={media_url}>
+  src/components/inbox/contact-sidebar.tsx               142    <img src={avatar_url}>
+  src/components/inbox/conversation-list.tsx             465    <img src={avatar_url}>
+  src/components/layout/header.tsx                       87    <img src={avatar_url}>
+  src/components/layout/sidebar.tsx                     338    <img src={avatar_url}>
+  src/components/settings/members-tab.tsx               359    <img src={avatar_url}>
+  src/components/flows/forms/node-config-form.tsx       982    <a href={media_url}>
+
+Recommendation:
+  function safeUrl(url: string): string | undefined {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      if (['http:', 'https:', 'blob:'].includes(parsed.protocol)) return url;
+    } catch {}
+    return undefined;
+  }
+
+--------------------------------------------------------------------------------
+M-2: Cookie Security Flags Not Explicitly Set
+--------------------------------------------------------------------------------
+CWE         : CWE-614 — Sensitive Cookie Without 'Secure' Attribute
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  The application delegates cookie configuration to Supabase SSR
+  defaults. No explicit SameSite, HttpOnly, or Secure flags are set
+  in src/middleware.ts or src/lib/supabase/server.ts.
+
+  Supabase defaults are typically httpOnly: true, secure: true,
+  sameSite: 'lax' — but this is library behavior, not
+  application-enforced.
+
+Recommendation:
+  Explicitly set cookie flags in createServerClient options:
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/'
+
+--------------------------------------------------------------------------------
+M-3: Invitation URL Host Derived from Attacker-Controlled Headers
+--------------------------------------------------------------------------------
+CWE         : CWE-601 — Open Redirect
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  File: src/app/api/account/invitations/route.ts, lines 94-135
+
+  When NEXT_PUBLIC_SITE_URL is not set, getBaseUrl() trusts
+  X-Forwarded-Host and Host headers. An attacker POSTing to
+  /api/account/invitations with Host: phishing.example.com
+  generates invite URLs pointing at their domain.
+
+  Mitigation: NEXT_PUBLIC_SITE_URL is set in .env.local (line 43),
+  and ALLOWED_INVITE_HOSTS provides additional defense.
+
+  Residual risk: A deployment that forgets BOTH variables is vulnerable.
+
+Recommendation:
+  Make NEXT_PUBLIC_SITE_URL required (fail startup if missing) or
+  always validate against ALLOWED_INVITE_HOSTS.
+
+--------------------------------------------------------------------------------
+M-4: PostgREST .or() Filter Interpolation with User-Controlled Search
+--------------------------------------------------------------------------------
+CWE         : CWE-89 — Improper Neutralization (SQL Injection)
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  File: src/app/api/v1/contacts/route.ts, line 59
+
+  query = query.or(`name.ilike.*${search}*,phone.ilike.*${search}*`);
+
+  The search parameter from the query string is sanitized and then
+  interpolated raw into a PostgREST .or() filter expression.
+
+  Sanitizer (lines 31-33):
+    function sanitizeSearch(raw: string): string {
+      return raw.replace(/[^\p{L}\p{N} +@.\-_]/gu, '').trim();
+    }
+
+  The sanitizer strips most dangerous characters but allows . and @,
+  which could theoretically interact with PostgREST grammar.
+
+Current exploitability: Very low.
+
+Recommendation:
+  Switch to a whitelist approach — only allow digits, +, -, .,
+  spaces, and Unicode letters. Remove @ unless email search is
+  a documented feature.
+
+--------------------------------------------------------------------------------
+M-5: Automations Engine Uses Dynamic .select() Without Allowlist
+--------------------------------------------------------------------------------
+CWE         : CWE-89 — Improper Neutralization
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  File: src/lib/automations/engine.ts, line 669
+
+  const { data } = await db
+    .from('contacts')
+    .select(cfg.operand)    // <-- user-configured column in .select()
+    .eq('id', args.contactId)
+    .eq('account_id', args.automation.account_id)
+    .maybeSingle()
+
+  cfg.operand originates from automation step_config in the database.
+  The flows engine (src/lib/flows/engine.ts:492-497) has an explicit
+  allowlist, but the automations engine does not.
+
+  The automation engine uses the service-role client (bypasses RLS).
+
+Recommendation:
+  Add allowlist similar to flows/engine.ts:
+    const ALLOWED = ['name', 'email', 'company'];
+    if (!ALLOWED.includes(cfg.operand)) throw new Error('Invalid operand');
+
+--------------------------------------------------------------------------------
+M-6: PostgREST Cursor Interpolation
+--------------------------------------------------------------------------------
+CWE         : CWE-89 — Improper Neutralization
+Status      : LOW RISK (well-defended)
+Effort      : 0.5 day
+
+Description:
+  File: src/lib/api/v1/pagination.ts, line 106
+
+  export function keysetFilter(cursor: Cursor | null): string | null {
+    if (!cursor) return null;
+    return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`;
+  }
+
+  cursor.createdAt (ISO timestamp) and cursor.id (UUID) are
+  interpolated raw into a PostgREST .or() filter string.
+
+  Well-defended:
+    - Cursor is base64url-encoded (opaque to users)
+    - decodeCursor validates id against strict UUID regex
+    - createdAt must parse as valid date
+    - If validation fails, cursor treated as null (first page)
+
+Recommendation: Already well-defended. Document the security
+consideration explicitly in code.
+
+--------------------------------------------------------------------------------
+M-7: Meta API Error Messages Leaked to Clients
+--------------------------------------------------------------------------------
+CWE         : CWE-209 — Error Message Information Disclosure
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  WhatsApp config and template routes forward Meta API error messages
+  directly to the client, revealing API internals, token validity,
+  and WABA configuration details.
+
+Affected Files:
+  ──────────────────────────────────────────────────────────────────────────────
+  File                                                  Line(s)
+  ──────────────────────────────────────────────────────────────────────────────
+  src/app/api/whatsapp/config/route.ts                  146, 248, 322
+  src/app/api/whatsapp/config/verify-registration/route.ts  111, 134
+  src/app/api/whatsapp/templates/submit/route.ts        256
+  src/app/api/whatsapp/templates/[id]/route.ts          226, 325
+  src/app/api/whatsapp/templates/sync/route.ts          317
+
+Recommendation:
+  Log Meta errors server-side; return generic "Meta API error" to client.
+
+--------------------------------------------------------------------------------
+M-8: Inconsistent Cron Endpoint Auth (Timing-Safe vs Plain Comparison)
+--------------------------------------------------------------------------------
+CWE         : CWE-208 — Observable Timing Discrepancy
+Status      : OPEN
+Effort      : 0.5 day
+
+Description:
+  Two cron endpoints handle authentication differently:
+
+  src/app/api/flows/cron/route.ts (lines 38-46):
+    Uses crypto.timingSafeEqual — constant-time comparison (GOOD)
+
+  src/app/api/automations/cron/route.ts (line 23):
+    Uses plain string comparison: supplied !== expected (BAD)
+
+  The flows cron endpoint prevents timing side-channel attacks.
+  The automations cron endpoint is theoretically vulnerable to
+  timing attacks (difficult to exploit over network).
+
+Recommendation:
+  Use timingSafeEqual in both endpoints.
+
+
+================================================================================
+                           LOW SEVERITY (11)
+================================================================================
+
+--------------------------------------------------------------------------------
+L-1: Legacy CBC Decryption Without MAC
+--------------------------------------------------------------------------------
+CWE         : CWE-353 — Missing Support for Integrity Check
+File        : src/lib/whatsapp/encryption.ts, lines 79-96
+Status      : OPEN
+
+Description:
+  Legacy CBC decryption path has no MAC verification. New encryptions
+  use AES-256-GCM (authenticated), but existing legacy-format ciphertext
+  is vulnerable to ciphertext manipulation. Opportunistic upgrade
+  occurs when specific code paths are hit.
+
+--------------------------------------------------------------------------------
+L-2: ILIKE Wildcard Injection in Broadcast Audience Filter
+--------------------------------------------------------------------------------
+CWE         : CWE-89 — Improper Neutralization of Wildcards
+File        : src/hooks/use-broadcast-sending.ts, line 306
+Status      : OPEN
+
+Description:
+  % and _ in filter values are not escaped before ILIKE interpolation.
+  Client-side only; affects the user's own broadcast audience selection.
+
+  else if (operator === 'contains') query = query.ilike('value', `%${value}%`);
+
+Recommendation:
+  Escape wildcards: value.replace(/%/g, '\\%').replace(/_/g, '\\_')
+
+--------------------------------------------------------------------------------
+L-3: Client-Side-Only File Upload Size/Type Validation
+--------------------------------------------------------------------------------
+CWE         : CWE-434 — Unrestricted Upload of File with Dangerous Type
+File        : src/lib/storage/upload-media.ts, lines 17-34
+Status      : OPEN
+
+Description:
+  MIME type and size limits validated client-side only. Supabase
+  Storage bucket provides server-side 16 MB backstop, but no
+  server-side MIME type verification.
+
+--------------------------------------------------------------------------------
+L-4: DNS Rebinding Residual Risk in Webhook SSRF Protection
+--------------------------------------------------------------------------------
+CWE         : CWE-918 — Server-Side Request Forgery
+File        : src/lib/webhooks/ssrf.ts, lines 16-18
+Status      : DOCUMENTED (accepted risk)
+
+Description:
+  DNS rebinding (hostname resolves to public IP during check, flips
+  to private before connect) is documented as not defended against.
+  Requires socket-level IP pinning that fetch doesn't expose.
+
+--------------------------------------------------------------------------------
+L-5: DNS Re-Resolution Race Between SSRF Check and Fetch
+--------------------------------------------------------------------------------
+CWE         : CWE-367 — Time-of-check Time-of-use (TOCTOU)
+Files       : src/lib/webhooks/ssrf.ts:77, src/lib/webhooks/deliver.ts:114
+Status      : OPEN
+
+Description:
+  DNS is resolved twice — once in SSRF check and again in fetch.
+  Race condition theoretically possible but mitigated by
+  redirect: 'manual'.
+
+--------------------------------------------------------------------------------
+L-6: Verify Token Comparison Uses === (Not Constant-Time)
+--------------------------------------------------------------------------------
+CWE         : CWE-208 — Observable Timing Discrepancy
+File        : src/app/api/whatsapp/webhook/route.ts, line 125
+Status      : OPEN
+
+Description:
+  GET verification uses === instead of timingSafeEqual:
+    if (decrypt(config.verify_token) === verifyToken) {
+
+  POST signature verification correctly uses constant-time comparison.
+  GET verification is lower risk but still inconsistent.
+
+--------------------------------------------------------------------------------
+L-7: Database Schema Fully Exposed in Source Control
+--------------------------------------------------------------------------------
+CWE         : CWE-200 — Exposure of Sensitive Information
+File        : supabase/migrations/ (35 files)
+Status      : OPEN (by design for open-source)
+
+Description:
+  35 migration files contain complete DDL (CREATE TABLE, RLS policies,
+  functions, triggers). Anyone with repo access can reconstruct the
+  entire database schema and RLS policies.
+
+--------------------------------------------------------------------------------
+L-8: DRY_RUN Env Var Accessible in Production
+--------------------------------------------------------------------------------
+CWE         : CWE-489 — Active Debug Code
+Files       : src/app/api/whatsapp/templates/submit/route.ts:141-143
+              src/app/api/whatsapp/templates/[id]/route.ts:42-43
+Status      : OPEN
+
+Description:
+  WHATSAPP_TEMPLATES_DRY_RUN can be set in production to bypass
+  Meta API calls and store synthetic template IDs.
+
+--------------------------------------------------------------------------------
+L-9: Console.log Leaking PII (Phone Numbers)
+--------------------------------------------------------------------------------
+CWE         : CWE-532 — Insertion of Sensitive Info into Log File
+File        : src/lib/whatsapp/send-message.ts, lines 434-436
+Status      : OPEN
+
+Description:
+  console.log outputs phone numbers (PII) to server logs:
+    console.log(`[send-message] Auto-corrected contact phone:
+                 ${sanitizedPhone} -> ${workingPhone}`)
+
+--------------------------------------------------------------------------------
+L-10: Media Route mediaId Not Sanitized
+--------------------------------------------------------------------------------
+CWE         : CWE-88 — Improper Neutralization of Argument Delimiters
+File        : src/app/api/whatsapp/media/[mediaId]/route.ts, lines 11, 68
+Status      : LOW RISK
+
+Description:
+  mediaId passed directly to Meta API URL without path traversal
+  sanitization. Meta API rejects invalid IDs. The mediaId is a
+  Meta-side identifier, not an internal UUID.
+
+--------------------------------------------------------------------------------
+L-11: ENCRYPTION_KEY Uses Non-Null Assertion
+--------------------------------------------------------------------------------
+CWE         : CWE-252 — Unchecked Return Value
+File        : src/lib/whatsapp/encryption.ts, line 29
+Status      : OPEN
+
+Description:
+  const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY!
+
+  If the env var is missing, the ! assertion causes cryptic failure
+  at encrypt/decrypt time rather than at startup.
+
+
+================================================================================
+                        INFORMATIONAL (7)
+================================================================================
+
+I-1: No eval(), exec(), or child_process Usage
+  Status: GOOD — Zero instances found in application code.
+
+I-2: No Server Actions
+  Status: GOOD — All routes use App Router Route Handlers.
+
+I-3: No innerHTML/outerHTML Assignments
+  Status: GOOD — All user content rendered through React JSX (auto-escaped).
+
+I-4: No postMessage Handlers Without Origin Validation
+  Status: GOOD — No postMessage handlers found.
+
+I-5: No CORS Misconfiguration
+  Status: GOOD — No explicit CORS; same-origin policy enforced by default.
+
+I-6: dangerouslySetInnerHTML Usage (10 instances)
+  Status: LOW RISK — All render developer-controlled translation strings,
+  not user data. Locations:
+    src/app/layout.tsx:107
+    src/components/contacts/import-modal.tsx:402-410
+    src/components/settings/whatsapp-config.tsx:502-508
+    src/components/settings/whatsapp-config.tsx:650,763,797-799,815-816
+
+I-7: MCP Server Security
+  Status: GOOD — Read-only by default, API key auth, stdio transport
+  (not network-accessible). Write tools only registered when
+  WACRM_ENABLE_WRITES=true.
+
+
+================================================================================
+                   POSITIVE SECURITY PATTERNS (COMMENDABLE)
+================================================================================
+
+The following areas demonstrate strong security engineering:
+
+  1. AES-256-GCM encryption for all secrets at rest
+     (access tokens, verify tokens, webhook secrets)
+     File: src/lib/whatsapp/encryption.ts
+
+  2. API keys stored as SHA-256 hashes — never plaintext
+     File: src/lib/api-keys/keys.ts, supabase migration 026
+
+  3. Comprehensive Supabase RLS on all tables with account-scoped
+     multi-tenant isolation
+     File: supabase/migrations/ (all 35 migrations)
+
+  4. Webhook HMAC-SHA256 verification with constant-time comparison
+     Files: src/lib/webhooks/sign.ts, src/lib/whatsapp/webhook-signature.ts
+
+  5. SSRF protection with full DNS resolution, private IP blocking,
+     and redirect: 'manual'
+     File: src/lib/webhooks/ssrf.ts
+
+  6. Security headers (HSTS, X-Frame-Options, X-Content-Type-Options,
+     Referrer-Policy, Permissions-Policy)
+     File: next.config.ts, lines 22-64
+
+  7. UUID validation on all route parameters
+     File: src/app/api/whatsapp/templates/[id]/route.ts:37-38
+
+  8. Rate limiting on all sensitive endpoints
+     File: src/lib/rate-limit.ts (comprehensive presets)
+
+  9. Centralized RBAC with single source of truth
+     File: src/lib/auth/roles.ts (4 roles: owner > admin > agent > viewer)
+
+ 10. Webhook auto-disable on consecutive failures with atomic counting
+     File: src/lib/webhooks/deliver.ts:34, supabase migration 028
+
+ 11. Constant-time comparison for webhook signatures and cron secrets
+     Files: src/lib/webhooks/sign.ts, src/app/api/flows/cron/route.ts
+
+ 12. Error handling that hides internal details (mostly)
+     File: src/lib/auth/account.ts:69-74
+
+ 13. Proper Supabase token rotation handling in middleware
+     File: src/middleware.ts:28-43
+
+
+================================================================================
+                       DEPENDENCIES AUDIT SUMMARY
+================================================================================
+
+  npm audit output:
+  ──────────────────────────────────────────────────────────────────────────────
+
+  @hono/node-server  <2.0.5
+    Severity: moderate
+    Node.js Adapter for Hono: Path traversal in serve-static on Windows
+    via encoded backslash (%5C)
+    Fix: npm audit fix --force (breaking change: shadcn@3.8.3)
+
+  brace-expansion  <=5.0.7
+    Severity: high
+    DoS via unbounded expansion length causing OOM process crash
+    Fix: npm audit fix --force (breaking change: eslint@10.8.0)
+
+  next  >=9.3.4-canary.0
+    Severity: high (9 CVEs)
+    - Middleware/proxy bypass via Turbopack
+    - DoS via Server Actions
+    - SSRF in Server Actions
+    - Cache confusion with request bodies
+    - Cache confusion with invalid UTF-8
+    - Unbounded Server Action payload
+    - SSRF in rewrites
+    - DoS via SVG image optimization
+    - Unauthenticated endpoint disclosure
+    Fix: npm audit fix --force (next@16.2.11)
+
+  postcss  <=8.5.17
+    Severity: high
+    Path traversal in Previous Source Map Auto-Loading leads to
+    Arbitrary .map File Disclosure
+    Fix: npm audit fix --force (next@16.2.11)
+
+  sharp  <0.35.0
+    Severity: high
+    Inherited vulnerabilities in libvips:
+    CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591
+    Fix: npm audit fix --force (next@16.2.11)
+
+  Total: 16 vulnerabilities (3 moderate, 13 high)
+
+  ──────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+                       REMEDIATION PRIORITY MATRIX
+================================================================================
+
+  PRIORITY    FINDING                             SEVERITY    EFFORT
+  ──────────────────────────────────────────────────────────────────────────────
+  P0          C-1: CSRF Protection                CRITICAL    2-3 days
+  (Immediate) C-2: Rotate/Secure Secrets          CRITICAL    1 day
+  ──────────────────────────────────────────────────────────────────────────────
+  P1          H-4: Update Dependencies            HIGH        1 day
+  (This       H-2: Fix Error Message Leakage      HIGH        0.5 day
+  Sprint)     H-3: Enforce CSP                    HIGH        1 day
+  ──────────────────────────────────────────────────────────────────────────────
+  P2          H-1: Middleware Gateway Auth         HIGH        1 day
+  (Next       M-1: URL Scheme Validation          MEDIUM      0.5 day
+  Sprint)     M-2: Cookie Security Flags          MEDIUM      0.5 day
+              M-3: Required SITE_URL              MEDIUM      0.5 day
+  ──────────────────────────────────────────────────────────────────────────────
+  P3          M-4 through M-8                      MEDIUM      1 day total
+  (Backlog)   L-1 through L-11                     LOW         2 days total
+  ──────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+                          END OF REPORT
+================================================================================
+
+Generated by: Cybersecurity Automated Analysis
+Date: July 25, 2026
+Classification: CONFIDENTIAL
+Distribution: System Administrator / Security Team Only
+
+================================================================================

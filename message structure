@@ -1,0 +1,119 @@
+Here is a complete, beautifully structured layout for your CRM/Chatbot flow (ideal for WhatsApp API, ManyChat, Meta Business Suite, or Website Chat).
+
+This is organized step-by-step so you can easily copy-paste it directly into your bot builder.
+
+---
+
+## 📱 Level 1: Main Welcome Message
+
+**Trigger:** Customer sends the first message.
+
+> **Message Text:**
+> Hello and welcome to Bluemantle! 🎓
+> Thank you so much for reaching out to us today. We are delighted to connect with you. To ensure we provide you with the best possible assistance, please let us know how we can help by selecting one of the options below:
+> 🌐 **Website:** [Insert Website Link]
+> 📸 **Instagram:** [Insert Instagram Link]
+
+### 🔘 Main Menu Buttons (Select One)
+
+* **[Button 1]** 🎓 Admission
+* **[Button 2]** ❓ Enquiry
+* **[Button 3]** 📍 Location
+* **[Button 4]** 📞 Talk to an Expert
+
+---
+
+## ➡️ Level 2: Sub-Menu Flows
+
+### Option 1: Admission Flow
+
+**Trigger:** User clicks **[🎓 Admission]**
+
+> **Bot Reply:**
+> Excellent! We would love to welcome you to our programs. What specific admission details are you looking for?
+
+**Sub-Buttons:**
+
+* **[Sub-button 1.1]** Eligibility & Criteria
+* **[Sub-button 1.2]** Fee Structure
+* **[Sub-button 1.3]** Apply Now (Link to Form)
+
+---
+
+### Option 2: Enquiry Flow
+
+**Trigger:** User clicks **[❓ Enquiry]**
+
+> **Bot Reply:**
+> We are happy to provide more information. Please let us know what you would like to inquire about:
+
+**Sub-Buttons:**
+
+* **[Sub-button 2.1]** Course / Program Details
+* **[Sub-button 2.2]** Download Brochure
+
+---
+
+### Option 3: Location Flow
+
+**Trigger:** User clicks **[📍 Location]**
+
+> **Bot Reply:**
+> We would love to host you! Here are our location details. How can we guide you?
+
+**Sub-Buttons:**
+
+* **[Sub-button 3.1]** Get Google Maps Link
+* **[Sub-button 3.2]** Full Postal Address
+* **[Sub-button 3.3]** Transport & Bus Routes
+
+---
+
+### Option 4: Talk to an Expert Flow
+
+**Trigger:** User clicks **[📞 Talk to an Expert]**
+
+> **Bot Reply:**
+> Sometimes it’s just easier to speak with a human! How would you prefer to connect with our counseling team?
+
+**Sub-Buttons:**
+
+* **[Sub-button 4.1]** Request a Call
+
+---
+
+## 🛠️ Bot Quick Setup Summary
+
+| Main Menu Option | Bot Reply Text | Sub-Button Actions |
+| --- | --- | --- |
+| **1. Admission** | *"Excellent! We would love to welcome you..."* | • Eligibility & Criteria<br>
+
+<br>• Fee Structure<br>
+
+<br>• Apply Now |
+| **2. Enquiry** | *"We are happy to provide more information..."* | • Course Details<br>
+
+<br>• Download Brochure |
+| **3. Location** | *"We would love to host you!..."* | • Google Maps Link<br>
+
+<br>• Full Address<br>
+
+<br>• Transport Routes |
+| **4. Talk to Expert** | *"Sometimes it’s just easier to speak with a human!..."* | • Request a Call |
+
+
+For existing customers
+
+Existing Customer Messages
+         │
+         ▼
+"Welcome back! How can we help?"
+         │
+    ┌────┴─────────────────────┐
+    │                          │
+Continue Application    "I Need Support" / "Talk to Counselor"
+    │                          │
+    ▼                          ▼
+Admission Menu         ⚡ INSTANT HUMAN HANDOFF
+                       Bot stops. Agent takes over.
+                       "We are here for you, hold on..."
