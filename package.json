@@ -1,17 +1,17 @@
 {
-  "name": "wacrm",
-  "version": "0.8.0",
+  "name": "bmit-crm",
+  "version": "1.0.0",
   "private": true,
-  "description": "Self-hostable CRM template for WhatsApp built on Next.js and Supabase — shared inbox, contacts, sales pipelines, broadcasts, and no-code automations.",
+  "description": "WhatsApp CRM for Bluemantle LLP — shared inbox, contacts, sales pipelines, broadcasts, and no-code automations. Built by ZAV INFO TECH.",
   "license": "MIT",
-  "author": "Arnas Donauskas",
-  "homepage": "https://github.com/ArnasDon/wacrm",
+  "author": "ZAV INFO TECH",
+  "homepage": "https://github.com/bluemantleinstitute-bot/BMIT-CRM",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ArnasDon/wacrm.git"
+    "url": "git+https://github.com/bluemantleinstitute-bot/BMIT-CRM.git"
   },
   "bugs": {
-    "url": "https://github.com/ArnasDon/wacrm/issues"
+    "url": "https://github.com/bluemantleinstitute-bot/BMIT-CRM/issues"
   },
   "keywords": [
     "crm",
@@ -21,8 +21,8 @@
     "supabase",
     "automation",
     "broadcast",
-    "self-hosted",
-    "template"
+    "bluemantle",
+    "bmit"
   ],
   "engines": {
     "node": ">=20.0.0"
